@@ -83,7 +83,7 @@ function mostrarEstadoVacio(message='No encontrado'){
     div.innerHTML = `<h3>${message}</h3><p>Prueba con otro nombre o número</p><button id="emptyCta" class="empty-action">Mostrar todos</button>`;
     lista.append(div);
 
-    // CTA
+
     const cta = document.querySelector('#emptyCta');
     if(cta) cta.addEventListener('click', () => {
         ocultarEstadoVacio();

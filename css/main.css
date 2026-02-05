@@ -157,7 +157,7 @@ header {
     gap: .5rem;
 }
 
-/* Estado global (buscando / error / warning) */
+
 .status {
     display: flex;
     align-items: center;
@@ -261,7 +261,7 @@ main {
     gap: 1rem;
 }
 
-/* Empty / no-results state */
+
 .empty-state {
     grid-column: 1 / -1;
     display: flex;
