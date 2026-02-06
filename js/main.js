@@ -4,15 +4,109 @@ let URL = "https://pokeapi.co/api/v2/pokemon/";
 
 const TOTAL_POKEMON = 1026;
 
+class CircuitBreaker {
+    constructor(failureThreshold = 5, resetTimeout = 30000) {
+        this.failureThreshold = failureThreshold;
+        this.resetTimeout = resetTimeout;
+        this.failureCount = 0;
+        this.state = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
+        this.nextAttempt = Date.now();
+    }
+
+    call(fn) {
+        if (this.state === 'OPEN') {
+            if (Date.now() < this.nextAttempt) {
+                return Promise.reject(new Error('Circuit breaker is OPEN'));
+            }
+            this.state = 'HALF_OPEN';
+        }
+
+        return Promise.resolve(fn())
+            .then(result => {
+                this.onSuccess();
+                return result;
+            })
+            .catch(error => {
+                this.onFailure();
+                throw error;
+            });
+    }
+
+    onSuccess() {
+        this.failureCount = 0;
+        this.state = 'CLOSED';
+    }
+
+    onFailure() {
+        this.failureCount++;
+        if (this.failureCount >= this.failureThreshold) {
+            this.state = 'OPEN';
+            this.nextAttempt = Date.now() + this.resetTimeout;
+        }
+    }
+
+    reset() {
+        this.failureCount = 0;
+        this.state = 'CLOSED';
+        this.nextAttempt = Date.now();
+    }
+}
+
+const circuitBreaker = new CircuitBreaker();
+
+async function fetchConRetry(url, options = {}) {
+    const {
+        timeout = 8000,
+        maxRetries = 3,
+        backoffMultiplier = 2,
+        initialDelay = 1000
+    } = options;
+
+    let lastError;
+    let delay = initialDelay;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await circuitBreaker.call(async () => {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+                try {
+                    const res = await fetch(url, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+
+                    if (!res.ok) throw new Error(String(res.status));
+                    return res.json();
+                } catch (error) {
+                    clearTimeout(timeoutId);
+                    throw error;
+                }
+            });
+        } catch (error) {
+            lastError = error;
+
+            // No retry para errores 404
+            if (error.message === '404') {
+                throw error;
+            }
+
+            // Si es el último intento, lanzar error
+            if (attempt === maxRetries) {
+                break;
+            }
+
+            // Esperar antes de reintentar
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay *= backoffMultiplier;
+        }
+    }
+
+    throw lastError;
+}
+
+// Mantener compatibilidad con el nombre antiguo
 function fetchConTimeout(url, timeout = 8000) {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-    return fetch(url, { signal: controller.signal })
-        .then(res => {
-            clearTimeout(id);
-            if (!res.ok) throw new Error(String(res.status));
-            return res.json();
-        });
+    return fetchConRetry(url, { timeout });
 } 
 
 function setLoading(isLoading){
